@@ -32,21 +32,46 @@ def get_random_samples(df, sentiment, n = 5):
         return subset
     return subset.sample(min(n, len(subset)), random_state=random.randint(0, 100000))
 
+STOPWORDS = {
+    "the","and","that","with","this","about","your","like","will","have","they",
+    "what","just","from","into","onto","been","there","here","then","than","them",
+    "you","were","when","where","while","which","such","shall","could","would",
+    "should","might","must","also","their","more","some","only","very","well",
+    "out","over","under","again","many","much","even","still","being","across",
+    "through","how","why","who","whom","whose","does","did","done","can","may",
+    "those","these","our","ours","him","her","his","hers","its","it's","they're",
+    "we","we're","i","i'm","im","dont","doesnt","didnt","cant","wont","aint",
+}
+
 def get_top_words(df, n=15):
+    
     if df.empty:
         return pd.DataFrame(columns=["word", "count"])
     
     text = " ".join(df["text_en"].dropna().astype(str).tolist()).lower()
+    keyword = str(df["keyword"].iloc[0]).lower()
     
     text = re.sub(r"http\S+", " ", text)
     tokens = re.findall(r"\b[a-záéíóúñüç]+\b", text)
-    tokens = [t for t in tokens if len(t) > 3]
+    tokens = [
+        t for t in tokens if len(t) > 3
+        and t not in STOPWORDS
+        and t != keyword
+    ]
     
     if not tokens:
         return pd.DataFrame(columns=["word", "count"])
     
     series = pd.Series(tokens).value_counts().head(n)
-    return series.reset_index(names=["word", "count"])
+    return series.reset_index().rename(columns={"index": "word", 0: "count"})
+
+def clean_text(text):
+    if not isinstance(text, str):
+        return ""
+    text = re.sub(r"http\S+", " ", text)
+    text = re.sub(r"#\w+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 def generate_insights(df):
     insights = []
@@ -59,23 +84,84 @@ def generate_insights(df):
     neg = int(counts.get("negative", 0))
     neu = int(counts.get("neutral", 0))
     
-    # Insight 1: Sentiment distribution
-    if total > 0:
+    pos_share = (pos / total) if total > 0 else 0.0
+    neg_share = (neg / total) if total > 0 else 0.0
+    skew = pos_share - neg_share
+    
+    # Insight 1: Sentiment skewness
+    if skew > 0.1:
         insights.append(
-            f"Sentiment distribution shows {pos} positive, {neg} negative, and {neu} neutral posts out of {total} total posts."
+            f"Sentiment balance: Conversation is positively skewed "
+            f"({pos} positive vs {neg} negative posts; skew = +{skew:.2f})."
+        )
+    elif skew < -0.1:
+        insights.append(
+            f"Sentiment balance: Conversation is negatively skewed "
+            f"({neg} negative vs {pos} positive posts; skew = {skew:.2f})."
+        )
+    else:
+        insights.append(
+            f"Sentiment balance: Conversation is fairly neutral "
+            f"({pos} positive vs {neg} negative posts; skew = {skew:.2f})."
         )
     
-    # Insight 2: Language and translation stats
-    lang_list = ", ".join(df["lang"].dropna().unique().tolist())
-    insights.append(
-        f"Detected {n_langs} languages in the sample: {lang_list};"
-        f"approximately {pct_translated:.2f}% of posts were translated to English."
-    )
+    # Insight 2: Sentiment distribution
+    if total > 0:
+        insights.append(
+            f"Sentiment distribution: Topic shows {pos} positive, {neg} negative, and {neu} neutral posts out of {total} total posts."
+        )
     
-    # Insight 3: Time span of the posts
+    # Insight 3: Language and translation stats
+    lang_list = ", ".join(df["lang"].dropna().unique().tolist())
+    
+    if pct_translated >= 40:
+        insights.append(
+            f"Language & reach: Topic appears hot across multiple language communities; "
+            f"({n_langs} languages detected: {lang_list}; ~{pct_translated:.1f}% of posts required translation)."
+        )
+    else:
+        insights.append(
+            f"Language & reach: Discussion is mainly driven by English-speaking users; "
+            f"({n_langs} languages detected: {lang_list}; only ~{pct_translated:.1f}% of posts required translation)."
+        )
+        
+    # Insight 4: Content intensity
+    lengths = df.get("text_en", df.get("text", "")).fillna("").astype(str).str.len()
+    avg_len = lengths.mean() if not lengths.empty else 0.0
+    
+    if avg_len >= 220:
+        insights.append(
+            f"Content intensity: Posts are mostly long and reflective; "
+            f"(average length ≈ {avg_len:.0f} characters), suggesting in-depth commentary rather than quick reactions."
+        )
+    elif avg_len <= 90:
+        insights.append(
+            f"Content intensity: Posts are mostly short comments; "
+            f"(average length ≈ {avg_len:.0f} characters), indicating quick reactions rather than detailed discussion."
+        )
+    else:
+        insights.append(
+            f"Content intensity: Post length is mixed; "
+            f"(average length ≈ {avg_len:.0f} characters), combining both quick reactions and more developed opinions."
+        )
+        
+    # Insight 5: Topic hint
+    try:
+        top_words = get_top_words(df, n=5)
+    except Exception:
+        top_words = pd.DataFrame(columns=["word", "count"])
+
+    if not top_words.empty:
+        top_terms = top_words["word"].head(3).tolist()
+        term_str = ", ".join(top_terms)
+        insights.append(
+            f"Top topics: The discussion is currently centered around: {term_str}."
+        )
+    
+    # Insight 6: Time span of the posts
     if oldest is not None and newest is not None:
         insights.append(
-            f"Posts range from {oldest.strftime('%Y-%m-%d %H:%M')} to "
+            f"Time window: This snapshot covers the range from {oldest.strftime('%Y-%m-%d %H:%M')} to "
             f"{newest.strftime('%Y-%m-%d %H:%M')} (UTC)."
         )
         
@@ -107,7 +193,7 @@ with st.container():
         min_score = st.number_input("Minimun Likes", min_value=0, max_value=10, value=0, step=1, help="Recommended to leave it at 0 for Mastodon")
         
     with col_q4:
-        tranlate_non_en = st.checkbox("Translate Non-English Posts", value=True, help="Leve it checked for a richer analysis")
+        translate_non_en = st.checkbox("Also run language analysis ", value=True, help="Leve it checked for a richer analysis")
     
     fetch_btn = st.button("Fetch and Analyze Data", type="primary")
     
@@ -123,7 +209,7 @@ if fetch_btn:
                 query=query.strip(),
                 limit=limit,
                 min_score=min_score,
-                translate_non_en=tranlate_non_en,
+                translate_non_en=translate_non_en,
                 )
         st.session_state["df"] = df
         if df.empty:
@@ -153,10 +239,15 @@ with col_k1:
     
 with col_k2:
     if oldest is not None and newest is not None:
+        short_value = f"{oldest:%m-%d %H:%M} to {newest:%m-%d %H:%M}"
+        full_range = f"{oldest:%Y-%m-%d %H:%M} to {newest:%Y-%m-%d %H:%M} (UTC)"
         st.metric(
             "Time range (UTC)",
-            f"{oldest.strftime('%Y-%m-%d %H:%M')} to {newest.strftime('%Y-%m-%d %H:%M')}"
+            short_value,
+            help=full_range
         )
+    else:
+        st.metric("Time range (UTC)", "N/A")
         
 with col_k3:
     st.metric("Languages Detected", f"{n_langs}")
@@ -177,8 +268,20 @@ with c_left:
     st.subheader("Language Breakdown")
     lang_counts = df["lang"].value_counts().reset_index()
     lang_counts.columns = ["Language", "Count"]
+    
     if not lang_counts.empty:
-        st.bar_chart(lang_counts.set_index("Language")["Count"], width="stretch")
+        import altair as alt
+        
+        chart = (
+            alt.Chart(lang_counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("Count:Q", title="Number of Posts"),
+                y=alt.Y("Language:N", title="Language", sort="-x"),
+                tooltip=["Language", "Count"],
+            )
+        )
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.write("No language data available.")
         
@@ -198,7 +301,14 @@ with c_center:
             .mark_arc(innerRadius=60)
             .encode(
                 theta="fraction:Q",
-                color="Sentiment:N",
+                color=alt.Color(
+                    "Sentiment:N",
+                    title="Sentiment",
+                    scale=alt.Scale(
+                        domain=["negative", "neutral", "positive"],
+                        range=["#ff9999", "#9ecae1", "#08519c"],
+                    )
+                    ),
                 tooltip=["Sentiment", "Count"]
             )
         )
@@ -237,36 +347,69 @@ with col_pos:
     st.subheader("Positive Examples")
     if st.button("Suffle Positive Samples"):
         st.session_state["samples_pos"] = get_random_samples(df, "positive")
-    pos_view = st.session_state["samples_pos"][["created_utc", "author", "lang", "sentiment_score", "text_en", "url"]] \
-        if not st.session_state["samples_pos"].empty else st.session_state["samples_pos"]
         
-    st.dataframe(pos_view, width="stretch", height=260)
-
+    pos_samples = st.session_state["samples_pos"].copy()
+    if not pos_samples.empty:
+        pos_samples["clean_text"] = pos_samples["text_en"].apply(clean_text)
+        view = pos_samples[["lang", "clean_text", "url"]].rename(
+            columns={
+                "lang": "Language",
+                "clean_text": "Text",
+                "url": "URL"
+            }
+        )
+        st.dataframe(view, width="stretch", height=260)
+    else:
+        st.write("No positive samples available.")
+        
+        
+        
 with col_neg:
     st.subheader("Negative Examples")
     if st.button("Suffle Negative Samples"):
         st.session_state["samples_neg"] = get_random_samples(df, "negative")
-    neg_view = st.session_state["samples_neg"][["created_utc", "author", "lang", "sentiment_score", "text_en", "url"]] \
-        if not st.session_state["samples_neg"].empty else st.session_state["samples_neg"]
-
-    st.dataframe(neg_view, width="stretch", height=260)
-
+        
+    neg_samples = st.session_state["samples_neg"].copy()
+    
+    if not neg_samples.empty:
+        neg_samples["clean_text"] = neg_samples["text_en"].apply(clean_text)
+        view = neg_samples[["lang", "clean_text", "url"]].rename(
+            columns={
+                "lang": "Language",
+                "clean_text": "Text",
+                "url": "URL"
+            }
+        )
+        st.dataframe(view, width="stretch", height=260)
+    else:
+        st.write("No negative samples available.")
+    
 st.markdown("---")
 
 st.markdown("### 5. Top Words in Posts")
 
 top_words = get_top_words(df, n=15)
+
 if not top_words.empty:
-    st.bar_chart(
-        top_words.set_index("word")["count"],
-        width="stretch"
+    
+    import altair as alt
+    
+    chart = (
+        alt.Chart(top_words)
+        .mark_bar()
+        .encode(
+            x=alt.X("count:Q", title="Count"),
+            y=alt.Y("word:N", title="Word", sort="-x"),
+            tooltip=["word", "count"],            
+        )
     )
+    st.altair_chart(chart, use_container_width=True)
 else:
     st.info("Not enough text content to extract words.")
     
 st.markdown("---")
 
-st.markdown("### 6. Automated Insights")
+st.markdown("### 6. Key BI takeaways")
 
 insights = generate_insights(df)
 
