@@ -8,7 +8,6 @@ __pycache__/
 
 data/*.db
 data/*.parquet
-data/*.csv
 .secrets/
 
 # Distribution / packaging

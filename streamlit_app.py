@@ -6,9 +6,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# -- CALL TO THE SCRAPER --
 from src.fetcher import run_scraper
-# -------------------------
+
 
 def compute_kpi(df):
     total_posts = len(df)
@@ -178,13 +177,48 @@ st.caption(
     "in Mastodon posts. Data is fetched per session and not stored permanently."
 )
 
+with st.expander("Model and methods used", expanded=False):
+    st.markdown(
+        """
+        **Pipeline overview**
+        
+        - Data source: Mastodon public posts fetched via Mastodon API.
+        - Language detection:
+            - Non-English posts are detected via metadata or heuristic language detection.
+            - Optionally, posts can be trasnlated to English for better sentiment analysis.
+        - Sentiment Model:
+            - Huggingaface transformer-based sentiment classifier (English based VADER).
+            - Outputs a continue sentiment score (-1 to +1) and categorical label (negative, neutral, positive).
+        - Translation Model:
+            - Huggingface text-to-text translation model (Helsinki-NLP, multilingual to English).
+        - Runtime:
+            - Executed on CPU using Streamlit; latency depends on data volume and translation needs.
+        """
+    )
+    
+with st.expander("How to use this dashboard", expanded=False):
+    st.markdown(
+        """
+        - **Configure your analysis**: Choose a keyword or hashtag and how many posts to fetch.
+        - **Filter the data**: Narrow down the dataset by sentiment, language or time window to focus on a specific slice.
+        - **Snapshot overview**: High-level KPIs about the current dataset (volume, time range, languages, sentiment).
+        - **Data distributions**:
+            - Language Breakdown: In which language communities the conversation is happening.
+            - Sentiment Donut: Overall sentiment polarity distribution.
+            - Time Series: Volume of posts over time; when discussion peaks occurred.
+        - **Sample Posts**: Read concrete positive or negative examples to understand tone.
+        - **Top Keywords**: See the most frequent terms in the posts to identify subtopics.
+        - **Key BI Takeaways**: Automatically generated narrative insights summarizing the main patterns.
+        """
+    )
+
 st.markdown("### 1. Configure your analysis")
 
 with st.container():
     col_q1, col_q2, col_q3, col_q4 = st.columns([2, 1, 1, 1])
     
     with col_q1:
-        query = st.text_input("Keyword or Hastag", value="AI", help="Keyword or hashtag to search for on Mastodon")
+        query = st.text_input("Keyword or Hashtag", value="AI", help="Keyword or hashtag to search for on Mastodon")
         
     with col_q2:
         limit = st.number_input("Number of Posts to Fetch", min_value=20, max_value=300, value=80, step=20)
@@ -193,41 +227,133 @@ with st.container():
         min_score = st.number_input("Minimun Likes", min_value=0, max_value=10, value=0, step=1, help="Recommended to leave it at 0 for Mastodon")
         
     with col_q4:
-        translate_non_en = st.checkbox("Also run language analysis ", value=True, help="Leve it checked for a richer analysis")
+        translate_non_en = st.checkbox("Also run language analysis ", value=True, help="Leave it checked for a richer analysis")
     
-    fetch_btn = st.button("Fetch and Analyze Data", type="primary")
+    col_bt1, col_bt2 = st.columns(2)
+    
+    with col_bt1:
+        fetch_btn = st.button("Run analysis", type="primary")
+    with col_bt2:
+        demo_btn = st.button("Load demo data")
     
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame()
     
+DEMO_PATH = "data/demo_ai_300.csv"
+if demo_btn:
+    try:
+        df_demo = pd.read_csv(DEMO_PATH)
+        st.session_state["df"] = df_demo
+        
+        st.session_state.pop("samples_pos", None)
+        st.session_state.pop("samples_neg", None)
+        
+        st.success("Loaded demo dataset (300 posts about 'AI').")
+    except FileNotFoundError:
+        st.error(
+            "Demo dataset file not found. Please generate it first"
+            " by running an analysis for 'AI' with 300 posts and saving it to 'data/demo_ai_300.csv'."
+        )
+    
 if fetch_btn:
+    
+    df_demo = run_scraper(query="AI", limit=300, min_score=0, translate_non_en=True)
+    df_demo.to_csv("data/demo_ai_300.csv", index=False)
+    
     if not query.strip():
         st.warning("Please, enter a valid keyword or hashtag to search for.")
     else:
-        with st.spinner("Fetching posts from Mastodon and running analysis..."):
-            df = run_scraper(
-                query=query.strip(),
-                limit=limit,
-                min_score=min_score,
-                translate_non_en=translate_non_en,
-                )
+        try:
+            with st.spinner("Fetching posts from Mastodon and running analysis..."):
+                df = run_scraper(
+                    query=query.strip(),
+                    limit=limit,
+                    min_score=min_score,
+                    translate_non_en=translate_non_en,
+                    )
+        except Exception as e:
+            st.error(
+                "Unable to fetch data from Mastodon at the moment"
+                "This can happen due to network issues, API rates limits, or changes in the Mastodon API."   
+            )
+            st.caption(f"Technical error details: `{type(e).__name__}: {e}`")
+            st.stop()
+            
         st.session_state["df"] = df
+        
+        st.session_state.pop("samples_pos", None)
+        st.session_state.pop("samples_neg", None)
+        
         if df.empty:
             st.info("No posts found for the given configuration. Try a different keyword or relax the filters.")
         else:
             st.success(f"Analysis complete! Fetched and analyzed {len(df)} posts for '{query.strip()}'.")
             
-df = st.session_state["df"]
+df_raw = st.session_state["df"]
 
 st.markdown("---")
 
-if df.empty:
-    st.info("No data to loaded yet. Configure your analysis above and click **Fetch and Analyze Data**.")
+if df_raw.empty:
+    st.info("No data loaded yet. Configure your analysis above and click **Run analysis**.")
     st.stop()
 
-df["created_utc"] = pd.to_datetime(df["created_utc"], errors="coerce")
+df_raw["created_utc"] = pd.to_datetime(df_raw["created_utc"], errors="coerce")
+df = df_raw.copy()
 
-st.markdown("### 2. Snapshot overview")
+st.markdown("### 2. Filter the data")
+
+sentiment_available = sorted(df_raw["sentiment_label"].dropna().unique().tolist())
+if sentiment_available:
+    sentiment_filter = st.multiselect(
+        "Sentiments to include",
+        options=sentiment_available,
+        default=sentiment_available,
+    )
+else:
+    sentiment_filter = []
+    
+langs_available = sorted(df_raw["lang"].dropna().unique().tolist())
+if langs_available:
+    lang_filter = st.multiselect(
+        "Languages to include",
+        options=langs_available,
+        placeholder="All languages",
+    )
+else:
+    lang_filter = []
+
+if df_raw["created_utc"].notna().any():
+    
+    min_date = df_raw["created_utc"].min()
+    max_date = df_raw["created_utc"].max()
+    
+    min_date = min_date.to_pydatetime()
+    max_date = max_date.to_pydatetime()
+    
+    time_range = st.slider(
+        "Filter time range",
+        min_value=min_date,
+        max_value=max_date,
+        value=(min_date, max_date),
+        format="YYYY-MM-DD HH:mm",
+    )
+else:
+    time_range = (None, None)
+
+if sentiment_filter:
+    df = df[df["sentiment_label"].isin(sentiment_filter)]
+if lang_filter:
+    df = df[df["lang"].isin(lang_filter)]
+if time_range[0] is not None and time_range[1] is not None:
+    df = df[
+        (df["created_utc"] >= time_range[0]) &
+        (df["created_utc"] <= time_range[1])
+    ]
+if df.empty:
+    st.warning("No data matches the selected filters. Adjust the filters to see the data.")
+    st.stop()
+
+st.markdown("### 3. Snapshot overview")
 
 total_posts, oldest, newest, n_langs, pct_translated = compute_kpi(df)
 avg_sentiment = df["sentiment_score"].mean() if not df.empty else 0.0
@@ -258,9 +384,11 @@ with col_k4:
 with col_k5:
     st.metric("Average Sentiment Score", f"{avg_sentiment:.3f}")
     
+st.write("Sentiment Score is derived from a transformer based classifier and ranges from -1 (very negative) to +1 (very positive).")
+    
 st.markdown("---")
 
-st.markdown("### 3. Distribution of Sentiments")
+st.markdown("### 4. Data Distributions")
 
 c_left, c_center, c_right = st.columns([1.1, 1.1, 1.2])
 
@@ -296,7 +424,7 @@ with c_center:
         
         sent_counts["fraction"] = sent_counts["Count"] / sent_counts["Count"].sum()
         
-        char = (
+        chart = (
             alt.Chart(sent_counts)
             .mark_arc(innerRadius=60)
             .encode(
@@ -312,7 +440,7 @@ with c_center:
                 tooltip=["Sentiment", "Count"]
             )
         )
-        st.altair_chart(char, use_container_width=True)
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.write("No sentiment data available.")
         
@@ -327,14 +455,22 @@ with c_right:
             .reset_index(name="Count")
         )
         ts_group = ts_group.sort_values("created_utc")
+        
+        ts_group["Smoothed"] = (
+            ts_group["Count"]
+            .rolling(window=3, min_periods=1, center=True)
+            .mean()
+        )
+        
         ts_group = ts_group.set_index("created_utc")
-        st.line_chart(ts_group["Count"], width="stretch")
+        
+        st.line_chart(ts_group["Smoothed"], width="stretch")
     else:
         st.write("No timestamp data available.")
         
 st.markdown("---")
 
-st.markdown("### 4. Sample Posts by Sentiment")
+st.markdown("### 5. Sample Posts by Sentiment")
 
 col_pos, col_neg = st.columns(2)
 
@@ -386,7 +522,7 @@ with col_neg:
     
 st.markdown("---")
 
-st.markdown("### 5. Top Words in Posts")
+st.markdown("### 6. Top keywords in this Snapshot")
 
 top_words = get_top_words(df, n=15)
 
@@ -409,7 +545,7 @@ else:
     
 st.markdown("---")
 
-st.markdown("### 6. Key BI takeaways")
+st.markdown("### 7. Key BI takeaways")
 
 insights = generate_insights(df)
 
