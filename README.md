@@ -1,76 +1,184 @@
-# Twitter Emotion Analysis
+# Multi-language Social Media Analysis
 
-## Project Overview
+**Initially planned for Twitter and moved to Mastodon due to API constrains, this project is a social media emotion and sentiment explorer with translation, NLP modeling, and interactive Streamlit dashboard.**
 
-**Twitter is not possible due to scrappers block and official API price**
+**Author**: Alejandro Lopez Ruiz
+**Category**: Data Science, Data Analytics and AI
+**Status**: v1.0, MVP (Minimum Viable Product) Completed (Real-time sessions, Mastodon API scraping, NLP pipeline, and analytical dashboard)
 
-**-> Reddit and Mastodon were used instead**
+## Overview
 
-This project realizes an emotional analyzis of recent tweets around a given keyword.
-It collects tweets in real time, processes the text, and applies sentiment and emotion analysis to them.
-The results will be visualized in charts and dashboards.
+This is an end-to-end NLP analysis pipeline that collects Mastodon posts for a chosen keyword, translates them (if needed), analyzes sentiment, and generates an interactive, session-based Streamlit dashboard.
 
-## Goals
+As previously mentioned, originally designed for Twitter and Reddit (APIs no longer open to the public), the project aimed to demostrate a platform independent social media insight workflow, providing fully scalable methods to any other services (Twitter, Reddit, Thread, LinkedIn, etc...) when API constrains allow. The code was fully designed for such purpose, so it is perfecty scalable provided the API credentials and adding the API fetcher.
 
-- Collect tweets from Twitter API.
-- Perform baseline sentiment analysis.
-- Extend to emotion classification.
-- Build interactive dashboard for keyword-based emotion exploration.
+The dashboard offers:
 
-## Project Structure
+- Live data collection
+- Automatic language detection and English translation
+- Transformer-based sentiment classification
+- Insights on sentiment skew, discourse style, language distribution and more.
+- Automatic topic detection
+- Random post exploration
+- Full interactive UI with charts and BI-style takeaways
 
-- `data/` : datasets of collected tweets
-- `notebooks/` : exploratory notebooks
-- `src/` : core Python scripts
-- `requirements.txt` : dependencies
+## Key features
 
-## Current Status (v0.1)
+### 1. Social Media Scraping
 
-- Repo initialized
-- Project and Scope Defined
+- Keyword based post retrieval via Mastodon's official API
+- Filter for:
+    - minimum like count
+    - number of posts
 
-## Currently Under Development
+### 2. Multi-language Pipeline
 
-- Tweet Collection
-- Storage on JSON foramt
-- Data Cleaning
+- Automated language detection
+- On the moment translation using Helsinki NLP
+- Full text clearing (URL removal, hastag removal, normalization)
+- Translation related metrics
 
-## Project Description
+### 3. NLP Modeling
 
-### Data Collection Tool
+- Sentiment snalysis using Vader _(v1.0)_
+- Emotion classification and BERT upgrade _(comming v2)_
+- Word frequency and topic hint metrics
 
-- snscrape 
+### 4. Fully Interactive Streamlit Dashboard
 
-### Data Storage
+- KPI panel
+- Sentiment distribution
+- Language distribution
+- Time series volume chart
+- Positive vs Negative sample posts
+- Top-word bar chart
+- Automatic BI insights block
+- Session based architecture (no local DB lag and errors)
 
-- Tweets will be stored in JSON format
-- Tweets will be cleaned and saved in CSV format
-- (v2.0 verion) Data will be loaded into SQLite in order to connect PowerBI
+### 5. Modular and Scalable Friendly Structure
 
-### Model Phases
+~~~Python
+project/
+│
+├── streamlit_app.py
+│
+│
+├── src/
+│   ├── fetcher.py
+│   ├── storage.py
+│   ├── scrapers/
+│   │   └── mastodon_scraper.py
+│   └── labeling/
+│       └── sentiment_model.py
+│
+├── data/                 
+│   ├── demo_ai_posts.csv
+│   ├── posts.db    #temporary session DB
+|
+├── requirements.txt
+└── README.md
 
-The model will have three phases:
+~~~
 
-- Phase 1 (v1.0/Baseline) - Sentiment with VADER/TextBlob (Quick analysis, not too reliable)
-- Phase 2 (v2.0/Upgrade) - Emotion with HuggingFace pretrained model (possibly BERT)
-- Phase 3 (v3.0/Final version) - model coded and trained on my own
+### 6. Tech Stack
 
-### Process
+**Languages**: Python
+**Dashboard**: streamlit, altair, numpy
+**Data**: sqlite, pandas
 
-- Input: keyword → fetch 250/500 recent tweets when looking the keyword
-- Output: Chart with sentiment / emotion analysis broken down
-- Advanced: track evolution of emotions over time (compare recent with one week old tweets)
-- Advanced visualization: dashboard for interactive exploration (probably Streamlit)
+### 7. System Architecture
 
-### Emotions
+~~~ Python
 
-Emotions the model will look for:
+┌─────────────────────┐
+│   User Query Input   │
+└───────────┬─────────┘
+            │
+            ▼
+┌─────────────────────┐       ┌───────────────────────────┐
+│   Mastodon Scraper   │──────▶   Raw Post Data (JSON)    │
+└─────────────────────┘       └─────────────┬─────────────┘
+                                            ▼
+                          ┌────────────────────────────┐
+                          │  NLP Pipeline              │
+                          │  - Language detection      │
+                          │  - Translation(HelsinkyNLP)│
+                          │  - Sentiment scoring       │
+                          └────────────────────────────┘
+                                            │
+                                            ▼
+                          ┌────────────────────────────┐
+                          │ Temporary In-Memory DB     │
+                          └────────────────────────────┘
+                                            │
+                                            ▼
+┌───────────────────────────────────────────────────────────┐
+│                   Streamlit Dashboard                     │
+│ KPI  · Plots · BI Insights · Sample posts · Filtering     │
+└───────────────────────────────────────────────────────────┘
 
-- Positive/Negative/Neutral
-- Joy / Excitement
-- Anger / Frustration
-- Fear / Uncertainty
 
-The scope of the emotion will be kept at a maximum of 6 in order to reduce ambiguity and the possibility of misclassification.
+~~~
 
-The analysis will report 3 different sentiment classes (Positive, Negative and Neutral) and three emotion classes (Joy, Anger, Fear).
+## Installation
+
+### 1. Clone the repo
+
+~~~ bash
+git clone https://github.com/AlejLr/twitter-emotion-analysis
+cd twitter-emotion-analysis
+~~~
+
+### 2. Create environment and install requirements
+
+~~~ bash
+pip install -r requirements.txt
+~~~
+
+### 3. Run Streamlit
+
+~~~ bash
+streamlit run streamlit_app.py
+~~~
+
+## Usage
+
+1. Enter a keyword (e.g "AI", "ChatGPT", "iPhone").
+2. Set numbers of posts to fetch.
+3. Choose minimum likes (optional filter).
+4. Click **Run Analysis**
+5. Explore the dashboard
+
+## Future Improvements (v2 - v3)
+
+### v2 Advanced NLP
+
+- BERT-based sentiment classifier
+- Emotion labelling (anger, joy, fear, excitement, ...)
+- Topic modeling (BERTopic or LDA)
+- Toxicity classifier
+
+### v2.5 Deployment
+
+- Deploy scraper backend to Google Cloud Run
+- Deploy dashboard to Streamlit Cloud / Cloud Run
+- Add async batch processing
+
+### v3 Platform Integration
+
+- Add Reddit (via Devvit)
+- Add Bluesky (free API)
+- Add Threads (Meta communicated the development of a free API)
+- Multi-platform comparison mode
+
+## What This Project Shows
+
+- NLP engineering (translation -> cleaning -> sentiment pipeline)
+- Data engineering (scrapping, clean ETL, caching, schema design)
+- Data analytics (Streamlit)
+- Modular Python design (fully supports any kind of scalability or integration)
+- BI interpretation
+
+## License
+
+MIT License
