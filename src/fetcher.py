@@ -32,10 +32,10 @@ def run_scraper(query, limit, min_score, translate_non_en, use_advanced_nlp):
         if "lang" not in df.columns:
             df["lang"] = "unknown"
     
-    if use_advanced_nlp:
-        df = enrich_with_advanced_models(df)
-    
     df = analyze_sentiment(df)
+    
+    if use_advanced_nlp:
+        df = enrich_with_advanced_models(df, text_col="text_en")
     
     nedeed = [
         "id", "source", "author", "text", "created_utc", "url",
