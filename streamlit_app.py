@@ -228,6 +228,7 @@ with st.container():
         
     with col_q4:
         translate_non_en = st.checkbox("Also run language analysis ", value=True, help="Leave it checked for a richer analysis")
+        use_advanced_nlp = st.checkbox("Run advanced NLP (really slow)", value=False, help="Enables transformer based sentiment and emotion models (may take several minutes)")
     
     col_bt1, col_bt2 = st.columns(2)
     
@@ -270,6 +271,7 @@ if fetch_btn:
                     limit=limit,
                     min_score=min_score,
                     translate_non_en=translate_non_en,
+                    use_advanced_nlp=use_advanced_nlp,
                     )
         except Exception as e:
             st.error(
@@ -545,7 +547,25 @@ else:
     
 st.markdown("---")
 
-st.markdown("### 7. Key BI takeaways")
+st.markdown("### 7. Emotion Distribution")
+
+# bar chart: emotion_label vs count.
+
+st.markdown("---")
+
+st.markdown("### 8. Toxic Content")
+
+# KPI: % toxic posts
+# bar chart: toxicity rate by topic or language.
+
+st.markdown("---")
+
+st.markdown("### XX. Key BI takeaways")
+
+# Upgrade for:
+#dominant emotion,
+#toxicity share,
+#top topic + emotion mix.
 
 insights = generate_insights(df)
 
