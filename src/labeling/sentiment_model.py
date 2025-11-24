@@ -59,7 +59,19 @@ def analyze_sentiment(df):
     return df
 
 
-# Additional function to aggregate sentiment results with Bert
-def aggregate_sentiment(df):
+def apply_bert_sentiment(df):
     pass
+
+def apply_emotion_model(df):
+    pass
+
+def apply_toxicity_model(df):
+    pass
+
+def enrich_with_advanced_models(df):
+    apply_bert_sentiment(df)
+    apply_emotion_model(df)
+    apply_toxicity_model(df)
+    return df
+
     

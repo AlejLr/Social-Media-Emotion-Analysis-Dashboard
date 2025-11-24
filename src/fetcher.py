@@ -2,9 +2,9 @@ import argparse
 import pandas as pd
 
 from src.scrapers.mastodon_scraper import scrape_mastodon
-from src.labeling.sentiment_model import analyze_sentiment, add_translations
+from src.labeling.sentiment_model import analyze_sentiment, add_translations, enrich_with_advanced_models
 
-def run_scraper(query, limit, min_score, translate_non_en):
+def run_scraper(query, limit, min_score, translate_non_en, use_advanced_nlp):
     
     df = scrape_mastodon(
         query=query,
@@ -31,6 +31,9 @@ def run_scraper(query, limit, min_score, translate_non_en):
             df["text_en"] = df.get("text", "")
         if "lang" not in df.columns:
             df["lang"] = "unknown"
+    
+    if use_advanced_nlp:
+        df = enrich_with_advanced_models(df)
     
     df = analyze_sentiment(df)
     
