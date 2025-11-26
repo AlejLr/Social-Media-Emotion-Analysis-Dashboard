@@ -37,17 +37,17 @@ def run_scraper(query, limit, min_score, translate_non_en, use_advanced_nlp):
     if use_advanced_nlp:
         df = enrich_with_advanced_models(df, text_col="text_en")
     
-    nedeed = [
+    needed = [
         "id", "source", "author", "text", "created_utc", "url",
         "keyword", "score", "extras", "lang", "text_en",
         "sentiment_score", "sentiment_label"
     ]
     
     df = df.copy()
-    for col in nedeed:
+    for col in needed:
         if col not in df.columns:
             df[col] = None
-    df = df[nedeed]
+    df = df[needed]
     
     return df
 
@@ -55,20 +55,29 @@ def run_scraper(query, limit, min_score, translate_non_en, use_advanced_nlp):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", required=True, help="Keyword to search for on the social media platforms")
-    ap.add_argument("--mastodon", action="store_true")
-    ap.add_argument("--reddit", action="store_true")
     ap.add_argument("--limit", type=int, default=200, help="Number of posts to fetch from each platform")
     ap.add_argument("--min_score", type=int, default=0, help="Minimum score (likes/upvotes) to consider a post")
+    ap.add_argument(
+        "--translate_non_en",
+        action="store_true",
+        help="Translate non-English posts to English before sentiment analysis",
+    )
+    ap.add_argument(
+        "--advanced_nlp",
+        action="store_true",
+        help="Run BERT-based sentiment, emotion and toxicity models (slower)",
+    )
+
     args = ap.parse_args()
-    
-    inserted = run_scraper(
+
+    df = run_scraper(
         query=args.query,
-        use_mastodon=args.mastodon,
-        use_reddit=args.reddit,
         limit=args.limit,
         min_score=args.min_score,
+        translate_non_en=args.translate_non_en,
+        use_advanced_nlp=args.advanced_nlp,
     )
-    print(f"Inserted: {inserted} rows.")
+    print(f"Fetched and processed {len(df)} posts.")
     
 if __name__ == "__main__":
     main()

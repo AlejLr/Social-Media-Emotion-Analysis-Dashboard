@@ -313,9 +313,6 @@ if demo_btn:
     
 if fetch_btn:
     
-    df_demo = run_scraper(query="AI", limit=300, min_score=0, translate_non_en=True)
-    df_demo.to_csv("data/demo_ai_300.csv", index=False)
-    
     if not query.strip():
         st.warning("Please, enter a valid keyword or hashtag to search for.")
     else:

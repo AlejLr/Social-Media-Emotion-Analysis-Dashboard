@@ -1,5 +1,3 @@
-import math
-from pydoc import text
 import pandas as pd
 import re
 
@@ -74,7 +72,7 @@ _EMOTION_PIPE = None
 _TOXICITY_PIPE = None
 
 
-def _get_sentiment_pipe(df):
+def _get_sentiment_pipe():
     
     """
     Twitter RoBERTa Sentiment model from Cardiff NLP:
@@ -93,7 +91,7 @@ def _get_sentiment_pipe(df):
         
     return _SENTIMENT_PIPE
 
-def _get_emotion_pipe(df):
+def _get_emotion_pipe():
     """
     GoEmotions student model:
         - Model: joeddav/distilbert-base-uncased-go-emotions-student
@@ -112,7 +110,7 @@ def _get_emotion_pipe(df):
     
     return _EMOTION_PIPE
 
-def _get_toxicity_pipe(df):
+def _get_toxicity_pipe():
     """
     Unitary unbiased toxic RoBERTa model:
         - Model: unitary/unbiased-toxic-roberta
@@ -142,9 +140,12 @@ def cpu_friendly_batches(pipe, texts, batch_size=16, **kargs):
     
     for i in range(0, n, batch_size):
         batch = texts[i : i + batch_size]
+        original_batch_len = len(batch)
+        
         batch = [t if isinstance(t, str) and t.strip() else "" for t in batch]
-        if not batch:
-            outputs.extend([None] * len(batch))
+        
+        if original_batch_len == 0:
+            outputs.extend([None] * original_batch_len)
             continue
         
         predictions = pipe(batch, **kargs)
@@ -154,13 +155,15 @@ def cpu_friendly_batches(pipe, texts, batch_size=16, **kargs):
 def apply_bert_sentiment(df, text_col="text_en", prefix="bert_", max_length=128):
     
     """
-    Add BERT based sentiment analysis columsn to the df:
-        - f"{prefix}label": negative / neutral / positive
-        - f"{prefix}score": probability of the predicted class
-        - f"{prefix}sentiment_score": continuous sentiment score in [-1, 1]
+    Add BERT-based sentiment analysis columsn to the df:
+        - <prefix>label": negative / neutral / positive
+        - <prefix>score": probability of the predicted class
+        - <prefix>sentiment_score": continuous sentiment score in [-1, 1]
         
     Uses cardiffnlp/twitter-roberta-base-sentiment-latest.
     """
+    if text_col not in df.columns:
+        return df
     
     if df.empty or text_col not in df.columns:
         df[f"{prefix}label"] = None
@@ -168,7 +171,7 @@ def apply_bert_sentiment(df, text_col="text_en", prefix="bert_", max_length=128)
         df[f"{prefix}sentiment_score"] = np.nan
         return df
     
-    pipe = _get_sentiment_pipe(df)
+    pipe = _get_sentiment_pipe()
     
     texts = df[text_col].fillna("").astype(str).tolist()
     raw_outputs = cpu_friendly_batches(
@@ -218,18 +221,20 @@ def apply_bert_sentiment(df, text_col="text_en", prefix="bert_", max_length=128)
 def apply_emotion_model(df, text_col="text_en", prefix="emo_", max_length=128):
     """
     Add emotion column to df:
-        - f"{prefix}label": top predicted emotion label
-        - f"{prefix}score": probability of the predicted emotion
+        - <prefix>label": top predicted emotion label
+        - <prefix>score": probability of the predicted emotion
         
     Uses joeddav/distilbert-base-uncased-go-emotions-student.
     """
+    if text_col not in df.columns:
+        return df
     
     if df.empty or text_col not in df.columns:
         df[f"{prefix}label"] = None
         df[f"{prefix}score"] = np.nan
         return df
     
-    pipe = _get_emotion_pipe(df)
+    pipe = _get_emotion_pipe()
     
     texts = df[text_col].fillna("").astype(str).tolist()
     raw_outputs = cpu_friendly_batches(
@@ -261,12 +266,14 @@ def apply_emotion_model(df, text_col="text_en", prefix="emo_", max_length=128):
 def apply_toxicity_model(df, text_col="text_en", prefix="tox_", max_length=128, threshold=0.5):
     """
     Add toxicity column to df:
-        - f"{prefix}max_label": label with highest toxicity score
-        - f"{prefix}max_score": toxicity score of that label
-        - f"{prefix}is_toxic": True / False based on threshold
+        - <prefix>max_label": label with highest toxicity score
+        - <prefix>max_score": toxicity score of that label
+        - <prefix>is_toxic": True / False based on threshold
         
     Uses unitary/unbiased-toxic-roberta.
     """
+    if text_col not in df.columns:
+        return df
     
     if df.empty or text_col not in df.columns:
         df[f"{prefix}is_toxic"] = None
@@ -274,7 +281,7 @@ def apply_toxicity_model(df, text_col="text_en", prefix="tox_", max_length=128, 
         df[f"{prefix}max_score"] = np.nan
         return df
     
-    pipe = _get_toxicity_pipe(df)
+    pipe = _get_toxicity_pipe()
     
     texts = df[text_col].fillna("").astype(str).tolist()
     raw_outputs = cpu_friendly_batches(
