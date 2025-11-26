@@ -60,10 +60,8 @@ The dashboard offers:
 ~~~Python
 project/
 │
-├── streamlit_app.py
-│
-│
 ├── src/
+│   ├── __init__.py
 │   ├── fetcher.py
 │   ├── storage.py
 │   ├── scrapers/
@@ -73,9 +71,12 @@ project/
 │
 ├── data/                 
 │   ├── demo_ai_posts.csv
-│   ├── posts.db    #temporary session DB
+│   ├── demo_advanced_ai_posts.csv
+│   ├── posts.db
 |
+├── streamlit_app.py
 ├── requirements.txt
+├── Dockerfile
 └── README.md
 
 ~~~
