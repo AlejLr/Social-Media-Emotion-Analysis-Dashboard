@@ -14,3 +14,4 @@ transformers>=4.44.2
 sentencepiece>=0.2.0
 torch>=2.1.0
 sacremoses>=0.0.53
+plotly-express>=0.4.1
