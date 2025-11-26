@@ -1,6 +1,7 @@
 import random
 import re
 from datetime import datetime
+import plotly.express as px
 
 import numpy as np
 import pandas as pd
@@ -170,12 +171,12 @@ def generate_insights(df):
         if top_share >= 0.45:
             insights.append(
                 f"Emotion profile: The conversation is strongly dominated by {top_emotion} "
-                f"(~{top_share*100:.1%} of posts)."
+                f"({top_share:.1%} of posts)."
             )
         elif top_share >= 0.25:
             insights.append(
                 f"Emotion profile: The conversation leans towards {top_emotion} "
-                f"(~{top_share*100:.1%} of posts), but other emotions also have a strong presence."
+                f"({top_share:.1%} of posts), but other emotions also have a strong presence."
             )
         else:
             insights.append(
@@ -228,7 +229,7 @@ st.set_page_config(
 
 st.title("Social Media Emotion Explorer")
 st.caption(
-    "Interactive and session based dashboard for exploring sentiment and language patterns "
+    "Interactive and session-based dashboard for exploring sentiment and language patterns "
     "in Mastodon posts. Data is fetched per session and not stored permanently."
 )
 
@@ -237,21 +238,39 @@ with st.expander("Model and methods used", expanded=False):
         """
         **Pipeline overview**
         
-        - Data source: Mastodon public posts fetched via Mastodon API.
-        - Language detection:
-            - Non-English posts are detected via metadata or heuristic language detection.
-            - Optionally, posts can be trasnlated to English for better sentiment analysis.
-        - Sentiment Model:
-            - Huggingaface transformer-based sentiment classifier (English based VADER).
-            - Outputs a continue sentiment score (-1 to +1) and categorical label (negative, neutral, positive).
-        - Translation Model:
-            - Huggingface text-to-text translation model (Helsinki-NLP, multilingual to English).
-        - Runtime:
-            - Executed on CPU using Streamlit; latency depends on data volume and translation needs.
+        - **Data source**
+            - Mastodon public posts fetched via Mastodon API.
+        
+        - **Language handling**
+            - Language detection using `langdetect` on the raw post text.
+            - Non-English posts are optionally translated to English for uniform analysis.
+            - Translation model: `Helsinki-NLP/opus-mt-mul-en` (multilingual -> English) via HuggingFace.
+            
+        - **Baseline sentiment model (always on)**
+            - VADER (`vaderSentiment`) rule-based sentiment analysis for initial scoring.
+            - Produces continuous sentiment score in [-1, 1] and categorical label (negative, neutral, positive).
+            
+        - **Advanced NLP models (optional)**
+            - **BERT sentiment**:
+                - Model: `cardiffnlp/twitter-roberta-base-sentiment-latest`
+                - Labels: negative, neutral, positive.
+                - Also derives a continuous sentiment score in [-1, 1].
+            - **Emotion classification**:
+                - Model: `joeddav/distilbert-base-uncased-go-emotions-student`
+                - Outputs a rich set of emotions (e.g. caring, joy, anger, ...) of wich the top emotion by post is used.
+            - **Toxicity detection**:
+                - Model: `unitary/unbiased-toxic-roberta`
+                - Multi-label toxicity, the app uses the most likely toxic category and a binary toxic / non-toxic flag based on a threshold.
+                
+        - **Runtime**
+            - All models are currently run on CPU inside Streamlit sessions.
+            - Performance depends mainly on:
+                - Number of posts fetched.
+                - Whether translation and advanced NLP models are enabled.
         """
     )
     
-with st.expander("How to use this dashboard", expanded=False):
+with st.expander("How to use this dashboard", expanded=True):
     st.markdown(
         """
         - **Configure your analysis**: Choose a keyword or hashtag and how many posts to fetch.
@@ -261,8 +280,10 @@ with st.expander("How to use this dashboard", expanded=False):
             - Language Breakdown: In which language communities the conversation is happening.
             - Sentiment Donut: Overall sentiment polarity distribution.
             - Time Series: Volume of posts over time; when discussion peaks occurred.
+        - **Emotion Distribution**: If advanced NLP is enabled, see the breakdown of emotions detected in the posts.
         - **Sample Posts**: Read concrete positive or negative examples to understand tone.
         - **Top Keywords**: See the most frequent terms in the posts to identify subtopics.
+        - **Toxicity Analysis**: If advanced NLP is enabled, view the prevalence and types of toxic content.
         - **Key BI Takeaways**: Automatically generated narrative insights summarizing the main patterns.
         """
     )
@@ -283,22 +304,23 @@ with st.container():
         
     with col_q4:
         translate_non_en = st.checkbox("Also run language analysis ", value=True, help="Leave it checked for a richer analysis")
-        use_advanced_nlp = st.checkbox("Run advanced NLP (really slow)", value=False, help="Enables transformer based sentiment and emotion models (may take several minutes)")
+        use_advanced_nlp = st.checkbox("Run advanced NLP (slower but recommended)", value=True, help="Enables transformer based sentiment and emotion models (may take several minutes)")
     
-    col_bt1, col_bt2 = st.columns(2)
+    col_bt1, col_bt2, col_bt3 = st.columns([1,1,1], gap="small")
     
     with col_bt1:
         fetch_btn = st.button("Run analysis", type="primary")
     with col_bt2:
         demo_btn = st.button("Load demo data")
+    with col_bt3:
+        advanced_btn = st.button("Load advanced demo data")
     
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame()
     
-DEMO_PATH = "data/demo_ai_300.csv"
 if demo_btn:
     try:
-        df_demo = pd.read_csv(DEMO_PATH)
+        df_demo = pd.read_csv("data/demo_ai_300.csv")
         st.session_state["df"] = df_demo
         
         st.session_state.pop("samples_pos", None)
@@ -311,6 +333,21 @@ if demo_btn:
             " by running an analysis for 'AI' with 300 posts and saving it to 'data/demo_ai_300.csv'."
         )
     
+if advanced_btn:
+    try:
+        df_advanced = pd.read_csv("data/demo_advanced_ai_300.csv")
+        st.session_state["df"] = df_advanced
+        
+        st.session_state.pop("samples_pos", None)
+        st.session_state.pop("samples_neg", None)
+        
+        st.success("Loaded advanced demo dataset (300 posts about 'AI' with transformer based sentiment and emotion).")
+    except FileNotFoundError:
+        st.error(
+            "Demo dataset file not found. Please generate it first"
+            " by running an advanced analysis for 'AI' with 300 posts and saving it to 'data/demo_advanced_ai_300.csv'."
+        )
+
 if fetch_btn:
     
     if not query.strip():
@@ -540,7 +577,95 @@ with c_right:
         
 st.markdown("---")
 
-st.markdown("### 5. Sample Posts by Sentiment")
+st.markdown("### 5. Emotion Distribution")
+
+if "emo_label" not in df.columns or df["emo_label"].dropna().empty:
+    st.info(
+        "Emotion columns not found. Enable **Run advanced NLP** above and "
+        "fetch data again to see this section."
+    )
+else:
+    
+    emo_df = df.dropna(subset=["emo_label"]).copy()
+    
+    emo_counts = emo_df["emo_label"].value_counts().reset_index()
+    emo_counts.columns = ["Emotion", "Count"]
+    
+    total_emo = int(emo_counts["Count"].sum())
+    dominant_row = emo_counts.iloc[0]
+    dominant_emo = dominant_row["Emotion"]
+    dominant_share = dominant_row["Count"] / total_emo * 100 if total_emo > 0 else 0.0
+    emotion_diversity = emo_counts["Emotion"].nunique()
+    
+    col_e1, col_e2, col_e3 = st.columns(3)
+    with col_e1:
+        st.metric("Dominant emotion", dominant_emo)
+    with col_e2:
+        st.metric("Emotion diversity", f"{emotion_diversity}")
+    with col_e3:
+        st.metric("Dominant emotion share", f"{dominant_share:.1f}%")
+    
+    col_treemap, col_table = st.columns([1.3, 1])
+    
+    with col_treemap:
+        st.subheader("Emotion Treemap")
+        
+        emo_counts["Percent"] = emo_counts["Count"] / total_emo * 100
+        
+        fig = px.treemap(
+            emo_counts,
+            path=["Emotion"],
+            values="Count",
+            color="Emotion",
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+        )
+        fig.update_traces(
+            hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Share: %{customdata[0]:.2f}%<extra></extra>",
+            customdata=emo_counts[["Percent"]].to_numpy(),
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col_table:
+        st.subheader("Emotion Summary")
+        
+        st.markdown("<br><br><br>", unsafe_allow_html=True) 
+        
+        group = emo_df.groupby("emo_label").agg(
+            count=("id", "count"),
+            avg_sentiment=("sentiment_score_final", "mean"),
+        )
+        
+        if "tox_is_toxic" in emo_df.columns:
+            group["toxic_share"] = (
+                emo_df.groupby("emo_label")["tox_is_toxic"]
+                .apply(lambda x: x.mean() if x.notna().any() else np.nan)
+            )
+        else:
+            group["toxic_share"] = np.nan
+        
+        group = group.reset_index().rename(columns={"emo_label": "Emotion"})
+        group["percent"] = group["count"] / total_emo * 100
+        
+        view = group[["Emotion", "count", "percent", "avg_sentiment", "toxic_share"]].copy()
+        view = view.rename(columns={
+            "count": "Count",
+            "percent": f"% of posts",
+            "avg_sentiment": "Avg. Sentiment",
+            "toxic_share": "Toxicity share"
+        })
+        
+        view[f"% of posts"] = view[f"% of posts"].map(lambda x: f"{x:.1f}%")
+        view["Avg. Sentiment"] = view["Avg. Sentiment"].map(lambda x: f"{x:.3f}" if pd.notna(x) else "—")
+        view["Toxicity share"] = view["Toxicity share"].map(
+            lambda x: f"{x*100:.1f}%" if pd.notna(x) else "—"
+        )
+        
+        st.dataframe(view, use_container_width=True, height=280)
+
+st.markdown("---")
+
+st.markdown("### 6. Sample Posts by Sentiment")
 
 col_pos, col_neg = st.columns(2)
 
@@ -551,7 +676,7 @@ if "samples_neg" not in st.session_state:
     
 with col_pos:
     st.subheader("Positive Examples")
-    if st.button("Suffle Positive Samples"):
+    if st.button("Shuffle Positive Samples"):
         st.session_state["samples_pos"] = get_random_samples(df, "positive")
         
     pos_samples = st.session_state["samples_pos"].copy()
@@ -572,7 +697,7 @@ with col_pos:
         
 with col_neg:
     st.subheader("Negative Examples")
-    if st.button("Suffle Negative Samples"):
+    if st.button("Shuffle Negative Samples"):
         st.session_state["samples_neg"] = get_random_samples(df, "negative")
         
     neg_samples = st.session_state["samples_neg"].copy()
@@ -592,7 +717,7 @@ with col_neg:
     
 st.markdown("---")
 
-st.markdown("### 6. Top keywords in this Snapshot")
+st.markdown("### 7. Top keywords in this Snapshot")
 
 top_words = get_top_words(df, n=15)
 
@@ -615,35 +740,6 @@ else:
     
 st.markdown("---")
 
-st.markdown("### 7. Emotion Distribution")
-
-if "emo_label" in df.columns:
-    emo_counts = df["emo_label"].value_counts().reset_index()
-    emo_counts.columns = ["Emotion", "Count"]
-    
-    if not emo_counts.empty:
-        import altair as alt
-        
-        emo_chart = (
-            alt.Chart(emo_counts)
-            .mark_bar()
-            .encode(
-                x=alt.X("Count:Q", title="Number of Posts"),
-                y=alt.Y("Emotion:N", title="Emotion", sort="-x"),
-                tooltip=["Emotion", "Count"],
-            )
-        )
-        st.altair_chart(emo_chart, use_container_width=True)
-    else:
-        st.write("No emotion data available.")
-else:
-    st.info(
-            "Emotion columns not found. Enable **Run advanced NLP** above and "
-            "fetch data again to see this section."
-    )
-    
-
-st.markdown("---")
 
 st.markdown("### 8. Toxic Content")
 
@@ -654,7 +750,7 @@ if "tox_is_toxic" in df.columns:
     clean_counts = int((~is_toxic).sum())
     total_counts = toxic_counts + clean_counts
     
-    col_t1, col_t2 = st.columns([1.3, 1])
+    col_t1, col_t2, col_t3 = st.columns([1.5, 0.5, 1])
     
     with col_t1:
         import altair as alt
@@ -690,6 +786,7 @@ if "tox_is_toxic" in df.columns:
         
         st.metric("Toxicity rate", f"{pct_toxic:.1f}%")
         
+    with col_t3:
         if "tox_max_label" in df.columns:
             top_toxic = (
                 df.loc[is_toxic, "tox_max_label"]
@@ -698,11 +795,12 @@ if "tox_is_toxic" in df.columns:
                 .head(5)
             )
             if not top_toxic.empty:
-                st.markdown("**Most common toxic categories:**")
+                st.markdown("<p style=\"line-height:0.6\"><b>Most common toxic categories:</b></p>", unsafe_allow_html=True)
                 for label, count in top_toxic.items():
-                    st.markdown(f"- {label}: {count} posts")
+                    st.markdown(f"<p style=\"line-height:0.6\">• {label}: {count} posts</p>", unsafe_allow_html=True)
         else:
             st.markdown("No detailed toxicity labels available.")
+            
 else:
     st.info(
         "Toxicity columns not found. Enable **Run advanced NLP** above and "

@@ -71,7 +71,6 @@ _SENTIMENT_PIPE = None
 _EMOTION_PIPE = None
 _TOXICITY_PIPE = None
 
-
 def _get_sentiment_pipe():
     
     """
