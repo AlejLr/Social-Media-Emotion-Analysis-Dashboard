@@ -60,10 +60,8 @@ The dashboard offers:
 ~~~Python
 project/
 │
-├── streamlit_app.py
-│
-│
 ├── src/
+│   ├── __init__.py
 │   ├── fetcher.py
 │   ├── storage.py
 │   ├── scrapers/
@@ -73,9 +71,12 @@ project/
 │
 ├── data/                 
 │   ├── demo_ai_posts.csv
-│   ├── posts.db    #temporary session DB
+│   ├── demo_advanced_ai_posts.csv
+│   ├── posts.db
 |
+├── streamlit_app.py
 ├── requirements.txt
+├── Dockerfile
 └── README.md
 
 ~~~
@@ -149,27 +150,37 @@ streamlit run streamlit_app.py
 4. Click **Run Analysis**
 5. Explore the dashboard
 
-## Future Improvements (v2 - v3)
+## Roadmap
 
-### v2 Advanced NLP
+### ✅ v1 Baseline Working App
+
+- Fetcher function
+- Initial Dashboard version
+- Language detection and trasnlation
+- Baseline sentiment analysis
+- Data Filters
+- Crafted Insights
+
+### ✅ v2 Advanced NLP
 
 - BERT-based sentiment classifier
 - Emotion labelling (anger, joy, fear, excitement, ...)
-- Topic modeling (BERTopic or LDA)
 - Toxicity classifier
+- Faster fetching and demo datasets
+- Improved Dashboard UX and better charts
+- Greater number and dynamic insights
 
 ### v2.5 Deployment
 
-- Deploy scraper backend to Google Cloud Run
-- Deploy dashboard to Streamlit Cloud / Cloud Run
-- Add async batch processing
+- Deploy the project on Google Cloud
 
 ### v3 Platform Integration
 
-- Add Reddit (via Devvit)
-- Add Bluesky (free API)
-- Add Threads (Meta communicated the development of a free API)
-- Multi-platform comparison mode
+- Deploy on GPU-backed infrastructure (e.g. GCP/AWS) for much faster advanced NLP.
+- Add **topic modelling** (e.g. BERTopic) for automatic topic discovery.
+- Per-language or per-country breakdowns (if location metadata is available).
+- Exportable PDF / PPTX report generator from the BI takeaways.
+- Multi-platform support (e.g. add Reddit/X again behind feature flags).
 
 ## What This Project Shows
 
