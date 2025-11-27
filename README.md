@@ -1,16 +1,27 @@
 # Multi-language Social Media Analysis
 
-**Initially planned for Twitter and moved to Mastodon due to API constrains, this project is a social media emotion and sentiment explorer with translation, NLP modeling, and interactive Streamlit dashboard.**
+**An end-to-end Streamlit dashboard that collects Mastodon posts, performs translation and NLP-based sentiment and emotion analysis, and presents interactive BI-style insights.**
 
-**Author**: Alejandro Lopez Ruiz
-**Category**: Data Science, Data Analytics and AI
-**Status**: v1.0, MVP (Minimum Viable Product) Completed (Real-time sessions, Mastodon API scraping, NLP pipeline, and analytical dashboard)
+**Author**: Alejandro Lopez Ruiz <br>
+**Category**: Data Science, Data Analytics and AI  <br>
+**Status**: Deployed <br>
+    - ✅ v1.0, MVP (Minimum Viable Product) (Real-time sessions, Mastodon API scraping, NLP pipeline, and analytical dashboard) <br>
+    - ✅ v2.0, Advance NLP analysis and improved UX and features  (More accurate sentiment analysis, emotion classification and toxicity detection) <br>
+    - ✅ v2.5 Google Cloud Deployment 
+
+## Live Project
+
+👉 [Live demo!](https://social-emotion-dashboard-781325401950.europe-west1.run.app/)
+
+❗ Streamlit's interface is only supported on computer, smarthphone browsers will not load some of the charts and tables.
+
+❗ If the interface presents any errors or not loaded assets, press "load demo data" and refresh (CTRL + R). The problem is due to Google Cloud's cold start on run-on-demand hosting.
 
 ## Overview
 
 This is an end-to-end NLP analysis pipeline that collects Mastodon posts for a chosen keyword, translates them (if needed), analyzes sentiment, and generates an interactive, session-based Streamlit dashboard.
 
-As previously mentioned, originally designed for Twitter and Reddit (APIs no longer open to the public), the project aimed to demostrate a platform independent social media insight workflow, providing fully scalable methods to any other services (Twitter, Reddit, Thread, LinkedIn, etc...) when API constrains allow. The code was fully designed for such purpose, so it is perfecty scalable provided the API credentials and adding the API fetcher.
+Originally designed for Twitter and Reddit (APIs no longer open to the public), the project aimed to demonstrate a platform independent social media insight workflow, providing fully scalable methods to any other services (Twitter, Reddit, Thread, LinkedIn, etc...) when API constraints allow. The code was fully designed for such purpose, so it is perfectly scalable provided the API credentials and adding the API fetcher.
 
 The dashboard offers:
 
@@ -18,6 +29,7 @@ The dashboard offers:
 - Automatic language detection and English translation
 - Transformer-based sentiment classification
 - Insights on sentiment skew, discourse style, language distribution and more.
+- Emotion detection and labelling
 - Automatic topic detection
 - Random post exploration
 - Full interactive UI with charts and BI-style takeaways
@@ -35,14 +47,14 @@ The dashboard offers:
 
 - Automated language detection
 - On the moment translation using Helsinki NLP
-- Full text clearing (URL removal, hastag removal, normalization)
+- Full text clearing (URL removal, hashtag removal, normalization)
 - Translation related metrics
 
 ### 3. NLP Modeling
 
-- Sentiment snalysis using Vader _(v1.0)_
-- Emotion classification and BERT upgrade _(comming v2)_
-- Word frequency and topic hint metrics
+- Sentiment analysis using Vader _(v1.0)_
+- Emotion classification and BERT upgrade _(v2.0)_
+- Word frequency and topic hint metrics _(v3.0)_
 
 ### 4. Fully Interactive Streamlit Dashboard
 
@@ -83,28 +95,30 @@ project/
 
 ### 6. Tech Stack
 
-**Languages**: Python
-**Dashboard**: streamlit, altair, numpy
-**Data**: sqlite, pandas
+**Languages**: Python <br>
+**Dashboard**: streamlit, altair, numpy <br>
+**Data**: sqlite, pandas <br>
 
 ### 7. System Architecture
 
 ~~~ Python
 
 ┌─────────────────────┐
-│   User Query Input   │
+│   User Query Input  │
 └───────────┬─────────┘
             │
             ▼
 ┌─────────────────────┐       ┌───────────────────────────┐
-│   Mastodon Scraper   │──────▶   Raw Post Data (JSON)    │
+│   Mastodon Scraper  │──────▶   Raw Post Data (JSON)    │
 └─────────────────────┘       └─────────────┬─────────────┘
                                             ▼
                           ┌────────────────────────────┐
                           │  NLP Pipeline              │
                           │  - Language detection      │
-                          │  - Translation(HelsinkyNLP)│
+                          │  - Translation             │
                           │  - Sentiment scoring       │
+                          |  - Emotion Analysis        |
+                          |  - Toxicity Analysis       |
                           └────────────────────────────┘
                                             │
                                             ▼
@@ -115,7 +129,7 @@ project/
                                             ▼
 ┌───────────────────────────────────────────────────────────┐
 │                   Streamlit Dashboard                     │
-│ KPI  · Plots · BI Insights · Sample posts · Filtering     │
+│ KPI  · Plots · BI Insights · Sample posts · Datasets      │
 └───────────────────────────────────────────────────────────┘
 
 
@@ -150,13 +164,20 @@ streamlit run streamlit_app.py
 4. Click **Run Analysis**
 5. Explore the dashboard
 
+#### Demo data
+
+- There are two datasets already provided to the user.
+- They have been previously fetched and analyzed so the loading time is minimal.
+- They both fetch for `AI` using 300 posts and basic and advance analysis.
+- Demo exploration is recommended before custom keyword fetch.
+
 ## Roadmap
 
 ### ✅ v1 Baseline Working App
 
 - Fetcher function
 - Initial Dashboard version
-- Language detection and trasnlation
+- Language detection and translation
 - Baseline sentiment analysis
 - Data Filters
 - Crafted Insights
@@ -167,20 +188,20 @@ streamlit run streamlit_app.py
 - Emotion labelling (anger, joy, fear, excitement, ...)
 - Toxicity classifier
 - Faster fetching and demo datasets
-- Improved Dashboard UX and better charts
-- Greater number and dynamic insights
+- Improved Dashboard UX and better quality charts
+- More insights and dinamic generation
 
-### v2.5 Deployment
+### ✅ v2.5 Deployment
 
 - Deploy the project on Google Cloud
 
 ### v3 Platform Integration
 
 - Deploy on GPU-backed infrastructure (e.g. GCP/AWS) for much faster advanced NLP.
-- Add **topic modelling** (e.g. BERTopic) for automatic topic discovery.
+- Add **topic modelling** (e.g. BERTopic) for automatic topic discovery (extremely heavy, only if running on GPU)
 - Per-language or per-country breakdowns (if location metadata is available).
-- Exportable PDF / PPTX report generator from the BI takeaways.
-- Multi-platform support (e.g. add Reddit/X again behind feature flags).
+- Exportable PDF / PPTX report generator from the BI takeaways (requires a better and more dynamic insights modeling).
+- Multi-platform support (e.g. add Reddit, X, Threads, ... if APIs accesible).
 
 ## What This Project Shows
 
