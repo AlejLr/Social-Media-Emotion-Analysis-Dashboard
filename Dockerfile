@@ -18,26 +18,8 @@ RUN pip install --upgrade pip \
 
 COPY . .
 
-RUN python - << 'EOF'
-from transformers import pipeline
-
-models = [
-    ("translation", "Helsinki-NLP/opus-mt-mul-en"),
-    ("sentiment-analysis", "cardiffnlp/twitter-roberta-base-sentiment-latest"),
-    ("text-classification", "joeddav/distilbert-base-uncased-go-emotions-student"),
-    ("text-classification", "unitary/unbiased-toxic-roberta"),
-]
-
-for task, model in models:
-    print(f"Downloading {model} for task {task} ...")
-    pipe = pipeline(task, model=model)
-    _ = pipe("Test")
-print("All models cached.")
-EOF
+RUN python scripts/cache_models.py
 
 EXPOSE 8080
 
-CMD ["bash", "-c", "streamlit run streamlit_app.py \
-    --server.port=$PORT \
-    --server.address=0.0.0.0 \
-    --browser.gatherUsageStats=false"]
+CMD streamlit run streamlit_app.py --server.port=$PORT --server.address=0.0.0.0 --browser.gatherUsageStats=false
