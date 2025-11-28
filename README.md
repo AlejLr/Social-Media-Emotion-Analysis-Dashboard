@@ -46,15 +46,19 @@ The dashboard offers:
 ### 2. Multi-language Pipeline
 
 - Automated language detection
-- On the moment translation using Helsinki NLP
-- Full text clearing (URL removal, hashtag removal, normalization)
-- Translation related metrics
+- On-the-fly translation using **Hugging Face Inference API** (Helsinki NLP)
+- Local fallback translation model if no API key is provided
+- Full text cleaning (URL removal, hashtag removal, normalization)
+- Translation-related metrics
 
 ### 3. NLP Modeling
 
-- Sentiment analysis using Vader _(v1.0)_
-- Emotion classification and BERT upgrade _(v2.0)_
-- Word frequency and topic hint metrics _(v3.0)_
+- Transformer-based **translation via Hugging Face Inference API**
+- Local transformer models for:
+    - BERT sentiment analysis (cardiffnlp/twitter-roberta-base-sentiment-latest)
+    - Emotion classification (GoEmotions student model)
+    - Toxicity detection (unitary/unbiased-toxic-roberta)
+- Hybrid design: API-powered translation + local GPU/CPU inference for advanced models
 
 ### 4. Fully Interactive Streamlit Dashboard
 
@@ -98,6 +102,9 @@ project/
 **Languages**: Python <br>
 **Dashboard**: streamlit, altair, numpy <br>
 **Data**: sqlite, pandas <br>
+**Inference & NLP Services**:
+- Hugging Face Inference API
+- Local transformer pipelines
 
 ### 7. System Architecture
 
@@ -134,6 +141,8 @@ project/
 
 
 ~~~
+
+The transformer components are offloaded to the Hugging Face Inference API, enabling multi-language support and transformer analysis and classification without loading large translation models into the Cloud Run container.
 
 ## Installation
 

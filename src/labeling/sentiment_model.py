@@ -1,5 +1,7 @@
 import pandas as pd
 import re
+import os
+import requests
 
 import numpy as np
 import torch
@@ -8,7 +10,41 @@ from langdetect import detect, LangDetectException
 from transformers import pipeline
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-translator = pipeline("translation", model="Helsinki-NLP/opus-mt-mul-en", max_length=512, truncation=True)
+HF_TOKEN = os.getenv("HF_TOKEN")
+HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+
+def hf_batch_request(model, inputs, timeout=120, parameters=None):
+    """
+    Send a requesto to the Hugging Face HF Inference API
+    
+    - model: HF model id
+    - inputs: string (or list of strings)
+    - parameters: optional task-specific settings
+    """
+
+    if not HF_TOKEN:
+        raise RuntimeError("HF_TOKEN not set")
+    
+    url = f"https://router.huggingface.co/hf-inference/models/{model}"
+    
+    payload = {"inputs": inputs}
+    if parameters:
+        payload["parameters"] = parameters
+        
+    resp = requests.post(url, headers=HEADERS, json=payload, timeout=timeout)
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError:
+        try:
+            msg = resp.json()
+        except Exception:
+            msg = resp.text
+        raise requests.HTTPError(
+            f"HF Inference API call failed for model {model}: {resp.status_code} {msg}"
+        )
+        
+    return resp.json()
+
 
 analyzer = SentimentIntensityAnalyzer()
 
@@ -17,11 +53,104 @@ def detect_language(text):
         return detect(text)
     except LangDetectException:
         return "unknown"
+    
+def translate_batch_safe(batch):
+    """
+    A helper that aims to fix all the errors that can happen during translation.
+    If HF returns 400/500 errors, we split the batch and look for the problem.
+    """
+    
+    if not batch:
+        return []
+    
+    if len(batch) == 1:
+        text = batch[0]
+        try:
+            response = hf_batch_request(
+                model="Helsinki-NLP/opus-mt-mul-en",
+                inputs=batch,
+                parameters={"max_length": 412},
+            )
+            item = response[0] if isinstance(response, list) and response else response
+            if isinstance(item, dict) and "translation_text" in item:
+                return [item["translation_text"]]
+            elif isinstance(item, list) and item and isinstance(item[0], dict) and "translation_text" in item[0]:
+                return [item[0]["translation_text"]]
+            else:
+                return [str(item)]
+        except (requests.HTTPError, requests.ReadTimeout) as e:
+            print("HF translation failed for single text, returning original:", repr(text[:200]), "error:", e)
+            return [text]
+        
+    try:
+        response = hf_batch_request(
+            model="Helsinki-NLP/opus-mt-mul-en",
+            inputs=batch,
+            parameters={"max_length": 412},
+        )
+        results = []
+        for item in response:
+            if isinstance(item, dict) and "translation_text" in item:
+                results.append(item["translation_text"])
+            elif isinstance(item, list) and item and isinstance(item[0], dict) and "translation_text" in item[0]:
+                results.append(item[0]["translation_text"])
+            else:
+                results.append(str(item))
+        return results
+    except (requests.HTTPError, requests.ReadTimeout) as e:
+        print(f"HF translation batch failed with {e}, splitting batch of size {len(batch)}")
+        mid = len(batch) // 2
+        left = batch[:mid]
+        right = batch[mid:]
+        left_res = translate_batch_safe(left)
+        right_res = translate_batch_safe(right)
+        return left_res + right_res
 
 def translate_to_english(text_list):
-    results = translator(text_list, max_length=512, truncation=True)
-    return [r["translation_text"] for r in results]
+    
+    if not text_list:
+        return []
+    
+    original_len = len(text_list)
+    
+    cleaned = []
+    index_map = []
+    for i, t in enumerate(text_list):
+        s = "" if t is None else str(t)
+        s = s.strip()
+        if not s:
+            continue
+        cleaned.append(s)
+        index_map.append(i)
+        
+    if not cleaned:
+        return [""] * original_len
+    
+    translations = [""] * original_len
+    
+    if HF_TOKEN:
+        batch_size = 8
+        for start in range(0, len(cleaned), batch_size):
+            batch = cleaned[start:start+batch_size]
+            
+            batch_translations = translate_batch_safe(batch)
+            for i, translated_text in enumerate(batch_translations):
+                original_index = index_map[start + i]
+                translations[original_index] = translated_text
 
+        return translations
+    
+    _TRANSLATOR = pipeline(
+        "translation", 
+        model="Helsinki-NLP/opus-mt-mul-en", 
+        max_length=512, 
+        truncation=True
+    )
+    
+    results = _TRANSLATOR(text_list, max_length=512, truncation=True)
+    
+    return [r["translation_text"] for r in results]
+        
 def add_translations(df, min_characters=15):
     if df.empty:
         return df
@@ -70,6 +199,38 @@ _DEVICE = 0 if torch.cuda.is_available() else -1
 _SENTIMENT_PIPE = None
 _EMOTION_PIPE = None
 _TOXICITY_PIPE = None
+
+def hf_text_classification(model, texts, timeout=120, parameters=None):
+    """
+    Call a text-classification model on HF Inference API.
+
+    - model: HF model id
+    - texts: list of strings
+    - returns: list of list[{"label": ..., "score": ...}] (one list per input)
+    """
+    if isinstance(texts, str):
+        texts = [texts]
+
+    response = hf_batch_request(
+        model=model,
+        inputs=texts,
+        timeout=timeout,
+        parameters=parameters,
+    )
+    
+    results = []
+    if isinstance(response, dict):
+        response = [response]
+
+    for item in response:
+        if isinstance(item, list):
+            results.append(item)
+        elif isinstance(item, dict):
+            results.append([item])
+        else:
+            results.append([])
+
+    return results
 
 def _get_sentiment_pipe():
     
@@ -170,16 +331,27 @@ def apply_bert_sentiment(df, text_col="text_en", prefix="bert_", max_length=128)
         df[f"{prefix}sentiment_score"] = np.nan
         return df
     
-    pipe = _get_sentiment_pipe()
-    
     texts = df[text_col].fillna("").astype(str).tolist()
-    raw_outputs = cpu_friendly_batches(
-        pipe,
-        texts,
-        batch_size=16,
-        truncation=True,
-        max_length=max_length,
-    )
+    
+    if HF_TOKEN:
+        raw_outputs = hf_text_classification(
+            model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+            texts=texts,
+            parameters={
+                "max_length": max_length,
+            },
+        )
+        
+    else:
+        pipe = _get_sentiment_pipe()
+        
+        raw_outputs = cpu_friendly_batches(
+            pipe,
+            texts,
+            batch_size=16,
+            truncation=True,
+            max_length=max_length,
+        )
     
     labels = []
     scores = []
@@ -233,16 +405,28 @@ def apply_emotion_model(df, text_col="text_en", prefix="emo_", max_length=128):
         df[f"{prefix}score"] = np.nan
         return df
     
-    pipe = _get_emotion_pipe()
-    
     texts = df[text_col].fillna("").astype(str).tolist()
-    raw_outputs = cpu_friendly_batches(
-        pipe,
-        texts,
-        batch_size=16,
-        truncation=True,
-        max_length=max_length,
-    )
+    
+    if HF_TOKEN:
+        raw_outputs = hf_text_classification(
+            model="joeddav/distilbert-base-uncased-go-emotions-student",
+            texts=texts,
+            parameters={
+                "max_length": max_length,
+                "top_k": None,
+            },
+        )
+    
+    else:
+        pipe = _get_emotion_pipe()
+        
+        raw_outputs = cpu_friendly_batches(
+            pipe,
+            texts,
+            batch_size=16,
+            truncation=True,
+            max_length=max_length,
+        )
     
     labels = []
     scores = []
@@ -280,16 +464,27 @@ def apply_toxicity_model(df, text_col="text_en", prefix="tox_", max_length=128, 
         df[f"{prefix}max_score"] = np.nan
         return df
     
-    pipe = _get_toxicity_pipe()
-    
     texts = df[text_col].fillna("").astype(str).tolist()
-    raw_outputs = cpu_friendly_batches(
-        pipe,
-        texts,
-        batch_size=16,
-        truncation=True,
-        max_length=max_length,
-    )
+    
+    if HF_TOKEN:
+        raw_outputs = hf_text_classification(
+            model="unitary/unbiased-toxic-roberta",
+            texts=texts,
+            parameters={
+                "max_length": max_length,
+                "top_k": None,
+            },
+        )
+    
+    else:
+        pipe = _get_toxicity_pipe()
+        raw_outputs = cpu_friendly_batches(
+            pipe,
+            texts,
+            batch_size=16,
+            truncation=True,
+            max_length=max_length,
+        )
     
     
     max_labels = []

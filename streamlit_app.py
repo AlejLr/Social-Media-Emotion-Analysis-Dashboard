@@ -368,7 +368,7 @@ if fetch_btn:
                     )
         except Exception as e:
             st.error(
-                "Unable to fetch data from Mastodon at the moment"
+                "Unable to fetch data from Mastodon at the moment. "
                 "This can happen due to network issues, API rates limits, or changes in the Mastodon API."   
             )
             st.caption(f"Technical error details: `{type(e).__name__}: {e}`")
