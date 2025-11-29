@@ -4,7 +4,7 @@
 
 **Author**: Alejandro Lopez Ruiz <br>
 **Category**: Data Science, Data Analytics and AI  <br>
-**Status**: Deployed <br>
+**Status**: Deployed — cloud demo (read-only, demo datasets). Full end-to-end scraping and heavy NLP run locally (see "Installation").<br>
     - ✅ v1.0, MVP (Minimum Viable Product) (Real-time sessions, Mastodon API scraping, NLP pipeline, and analytical dashboard) <br>
     - ✅ v2.0, Advance NLP analysis and improved UX and features  (More accurate sentiment analysis, emotion classification and toxicity detection) <br>
     - ✅ v2.5 Google Cloud Deployment 
@@ -13,7 +13,7 @@
 
 👉 [Live demo!](https://social-emotion-dashboard-781325401950.europe-west1.run.app/)
 
-❗ Streamlit's interface is only supported on computer, smarthphone browsers will not load some of the charts and tables.
+❗ Streamlit's interface is only supported on computer, smartphone browsers will not load some of the charts and tables.
 
 ❗ If the interface presents any errors or not loaded assets, press "load demo data" and refresh (CTRL + R). The problem is due to Google Cloud's cold start on run-on-demand hosting.
 
@@ -33,6 +33,14 @@ The dashboard offers:
 - Automatic topic detection
 - Random post exploration
 - Full interactive UI with charts and BI-style takeaways
+
+## Cloud demo vs Local full features
+
+- Cloud deployment is intentionally lightweight and only allows the visualization of the included demo datasets for UI exploration. This avoids large model downloads, long cold starts, and high Google Cloud hosting and Hugging Face API costs.
+- Demo datasets included: `demo_ai_300.csv`, `demo_advanced_ai_300.csv`, `demo_advanced_iphone_300.csv` and `demo_advanced_microsoft_300.csv`. You can load these in the hosted demo and explore the dashboard.
+- Full functionality (live scraping, per-language local Helsinki models, heavy BERT emotion/toxicity models) runs only on a local machine that downloads the model weights.
+- Translation and heavy models: the app prefers the Hugging Face Inference API when `HF_TOKEN` is provided; if no token is available the app falls back to local models. If the user does not count with a Hugging Face token or does not have a good account tier (more heavy computation allowed) the models run perfectly fine on CUDA or CPU, and might even be prefered.
+- To enable full features locally set the environment variable `ALLOW_FULL_FEATURES=true` before starting the app (instructions below).
 
 ## Key features
 
@@ -149,8 +157,8 @@ The transformer components are offloaded to the Hugging Face Inference API, enab
 ### 1. Clone the repo
 
 ~~~ bash
-git clone https://github.com/AlejLr/twitter-emotion-analysis
-cd twitter-emotion-analysis
+git clone https://github.com/AlejLr/Social-Media-Emotion-Analysis-Dashboard
+cd Social-Media-Emotion-Analysis-Dashboard
 ~~~
 
 ### 2. Create environment and install requirements
@@ -159,7 +167,43 @@ cd twitter-emotion-analysis
 pip install -r requirements.txt
 ~~~
 
-### 3. Run Streamlit
+### 3. Allow full features and set token (only if HF API will be used)
+
+~~~bash
+set ALLOW_FULL_FEATURES=true
+
+# Only if using the HF API is intended
+set HF_TOKEN=your_hf_token_here 
+set HUGGINGFACEHUB_API_TOKEN=your_hf_token_here
+~~~
+
+### 4. (Optionally) Pre-download/cach e models locally to avoid long first-run delays
+
+~~~bash
+python - <<'PY'
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModel
+models = [
+  "cardiffnlp/twitter-roberta-base-sentiment-latest",
+  "joeddav/distilbert-base-uncased-go-emotions-student",
+  "unitary/unbiased-toxic-roberta",
+  "Helsinki-NLP/opus-mt-mul-en"
+]
+for m in models:
+    try:
+        AutoTokenizer.from_pretrained(m)
+    except Exception:
+        pass
+    try:
+        AutoModelForSequenceClassification.from_pretrained(m)
+    except Exception:
+        try:
+            AutoModel.from_pretrained(m)
+        except Exception:
+            pass
+PY
+~~~
+
+### 5. Run Streamlit
 
 ~~~ bash
 streamlit run streamlit_app.py
@@ -175,9 +219,9 @@ streamlit run streamlit_app.py
 
 #### Demo data
 
-- There are two datasets already provided to the user.
+- There are four datasets already provided to the user.
 - They have been previously fetched and analyzed so the loading time is minimal.
-- They both fetch for `AI` using 300 posts and basic and advance analysis.
+- They both allow to explore the basic but faster and advance but slower analysis.
 - Demo exploration is recommended before custom keyword fetch.
 
 ## Roadmap
@@ -198,11 +242,11 @@ streamlit run streamlit_app.py
 - Toxicity classifier
 - Faster fetching and demo datasets
 - Improved Dashboard UX and better quality charts
-- More insights and dinamic generation
+- More insights and dynamic generation
 
 ### ✅ v2.5 Deployment
 
-- Deploy the project on Google Cloud
+- Deploy a demo of the project on Google Cloud
 
 ### v3 Platform Integration
 
@@ -211,6 +255,12 @@ streamlit run streamlit_app.py
 - Per-language or per-country breakdowns (if location metadata is available).
 - Exportable PDF / PPTX report generator from the BI takeaways (requires a better and more dynamic insights modeling).
 - Multi-platform support (e.g. add Reddit, X, Threads, ... if APIs accesible).
+
+## Design rationale
+
+- The hosted demo demonstrates the UX and data pipeline while remaining cost-efficient and reliable.
+- Heavy NLP inference is reproducible locally to show full engineering capability and allows end-to-end experiments without incurring cloud inference costs.
+- The architecture shows sensible production trade-offs: lazy-loading, API-offload when useful, local reproducibility.
 
 ## What This Project Shows
 

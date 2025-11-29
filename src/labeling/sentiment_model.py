@@ -45,6 +45,19 @@ def hf_batch_request(model, inputs, timeout=120, parameters=None):
         
     return resp.json()
 
+def clean_text_for_model(text, max_length=300):
+    
+    URL_RE = re.compile(r"http[s]?://\S+")
+    HASHTAG_RE = re.compile(r"#(\w+)")
+    
+    s = "" if text is None else str(text)
+    s = URL_RE.sub("", s)
+    s = HASHTAG_RE.sub(r"\1", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s) > max_length:
+        s = s[:max_length]
+    return s
+
 
 analyzer = SentimentIntensityAnalyzer()
 
@@ -200,7 +213,7 @@ _SENTIMENT_PIPE = None
 _EMOTION_PIPE = None
 _TOXICITY_PIPE = None
 
-def hf_text_classification(model, texts, timeout=120, parameters=None):
+def hf_text_classification(model, texts, timeout=120, parameters=None, batch_size=8):
     """
     Call a text-classification model on HF Inference API.
 
@@ -210,27 +223,56 @@ def hf_text_classification(model, texts, timeout=120, parameters=None):
     """
     if isinstance(texts, str):
         texts = [texts]
+        
+    all_results = []
 
-    response = hf_batch_request(
-        model=model,
-        inputs=texts,
-        timeout=timeout,
-        parameters=parameters,
-    )
+    for start in range(0, len(texts), batch_size):
+        
+        batch = texts[start : start + batch_size]
+        try:
+            response = hf_batch_request(
+                model=model,
+                inputs=batch,
+                timeout=timeout,
+                parameters=parameters,
+            )
+        
+        except requests.HTTPError as e:
+            print(f"HF classification batch timeout (model={model}, size={len(batch)}):", e)
+            neutral = [{"label": "neutral", "score": 0.0}]
+            all_results.extend([neutral for _ in batch])
+            continue
+        except requests.ReadTimeout as e:
+            print(f"HF classification batch timeout (model={model}, size={len(batch)}):", e)
+            neutral = [{"label": "neutral", "score": 0.0}]
+            all_results.extend([neutral for _ in batch])
+            continue
+        
+        if isinstance(response, dict):
+            response = [response]
+            
+        batch_results = []
+        for resp in response:
+            if isinstance(resp, list):
+                batch_results.append(resp)
+            elif isinstance(resp, dict):
+                batch_results.append([resp])
+            else:
+                batch_results.append([])
+        if len(batch_results) < len(batch):
+            batch_results.extend([[] for _ in range(len(batch) - len(batch_results))])
+        elif len(batch_results) > len(batch):
+            batch_results = batch_results[:len(batch)]
+        
+        all_results.extend(batch_results)
     
-    results = []
-    if isinstance(response, dict):
-        response = [response]
-
-    for item in response:
-        if isinstance(item, list):
-            results.append(item)
-        elif isinstance(item, dict):
-            results.append([item])
-        else:
-            results.append([])
-
-    return results
+    if len(all_results) < len(texts):
+        all_results.extend([[] for _ in range(len(texts) - len(all_results))])
+    elif len(all_results) > len(texts):
+        all_results = all_results[:len(texts)]
+        
+    return all_results
+    
 
 def _get_sentiment_pipe():
     
@@ -331,7 +373,8 @@ def apply_bert_sentiment(df, text_col="text_en", prefix="bert_", max_length=128)
         df[f"{prefix}sentiment_score"] = np.nan
         return df
     
-    texts = df[text_col].fillna("").astype(str).tolist()
+    raw_texts = df[text_col].fillna("").astype(str).tolist()
+    texts = [clean_text_for_model(t) for t in raw_texts]
     
     if HF_TOKEN:
         raw_outputs = hf_text_classification(
@@ -340,6 +383,7 @@ def apply_bert_sentiment(df, text_col="text_en", prefix="bert_", max_length=128)
             parameters={
                 "max_length": max_length,
             },
+            batch_size=4
         )
         
     else:
@@ -405,7 +449,8 @@ def apply_emotion_model(df, text_col="text_en", prefix="emo_", max_length=128):
         df[f"{prefix}score"] = np.nan
         return df
     
-    texts = df[text_col].fillna("").astype(str).tolist()
+    raw_texts = df[text_col].fillna("").astype(str).tolist()
+    texts = [clean_text_for_model(t) for t in raw_texts]
     
     if HF_TOKEN:
         raw_outputs = hf_text_classification(
@@ -464,7 +509,8 @@ def apply_toxicity_model(df, text_col="text_en", prefix="tox_", max_length=128, 
         df[f"{prefix}max_score"] = np.nan
         return df
     
-    texts = df[text_col].fillna("").astype(str).tolist()
+    raw_texts = df[text_col].fillna("").astype(str).tolist()
+    texts = [clean_text_for_model(t) for t in raw_texts]
     
     if HF_TOKEN:
         raw_outputs = hf_text_classification(

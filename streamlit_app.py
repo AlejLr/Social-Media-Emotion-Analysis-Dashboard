@@ -1,5 +1,6 @@
 import random
 import re
+import os
 from datetime import datetime
 import plotly.express as px
 
@@ -8,6 +9,8 @@ import pandas as pd
 import streamlit as st
 
 from src.fetcher import run_scraper
+
+ALLOW_FULL_FEATURES = os.getenv("ALLOW_FULL_FEATURES", "false").lower() == "true"
 
 
 def compute_kpi(df):
@@ -232,6 +235,10 @@ st.caption(
     "Interactive and session-based dashboard for exploring sentiment and language patterns "
     "in Mastodon posts. Data is fetched per session and not stored permanently."
 )
+if not ALLOW_FULL_FEATURES:
+    st.info("Cloud demo: Fetch functionality disabled. Run locally for full features or explore real fetchs via demo datasets.")
+else:
+    st.info("Full feature access enabled: You can fetch live data from Mastodon and run the full analysis.")
 
 with st.expander("Model and methods used", expanded=False):
     st.markdown(
@@ -306,14 +313,18 @@ with st.container():
         translate_non_en = st.checkbox("Also run language analysis ", value=True, help="Leave it checked for a richer analysis")
         use_advanced_nlp = st.checkbox("Run advanced NLP (slower but recommended)", value=True, help="Enables transformer based sentiment and emotion models (may take several minutes)")
     
-    col_bt1, col_bt2, col_bt3 = st.columns([1,1,1], gap="small")
+    col_bt1, col_bt2, col_bt3, col_bt4, col_bt5 = st.columns([0.66,0.75,1,1.27,1.27])
     
     with col_bt1:
         fetch_btn = st.button("Run analysis", type="primary")
     with col_bt2:
-        demo_btn = st.button("Load demo data")
+        demo_btn = st.button("Basic AI demo data")
     with col_bt3:
-        advanced_btn = st.button("Load advanced demo data")
+        advanced_btn = st.button("Advanced AI demo data")
+    with col_bt4:
+        iphone_btn = st.button("Advanced iPhone demo data")
+    with col_bt5:
+        microsoft_btn = st.button("Advanced Microsoft demo data")
     
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame()
@@ -347,42 +358,107 @@ if advanced_btn:
             "Demo dataset file not found. Please generate it first"
             " by running an advanced analysis for 'AI' with 300 posts and saving it to 'data/demo_advanced_ai_300.csv'."
         )
-
-if fetch_btn:
-    
-    if not query.strip():
-        st.warning("Please, enter a valid keyword or hashtag to search for.")
-    else:
-        try:
-            msg = "Fetching posts from Mastodon and running basic analysis..."
-            if use_advanced_nlp:
-                msg = ("Fetching posts and running advanced transformer-based NLP \n This can be slow on CPU and take several minutes, consider using the demo dataset if you still have not.")
-                
-            with st.spinner(msg):
-                df = run_scraper(
-                    query=query.strip(),
-                    limit=limit,
-                    min_score=min_score,
-                    translate_non_en=translate_non_en,
-                    use_advanced_nlp=use_advanced_nlp,
-                    )
-        except Exception as e:
-            st.error(
-                "Unable to fetch data from Mastodon at the moment. "
-                "This can happen due to network issues, API rates limits, or changes in the Mastodon API."   
-            )
-            st.caption(f"Technical error details: `{type(e).__name__}: {e}`")
-            st.stop()
-            
-        st.session_state["df"] = df
+        
+if iphone_btn:
+    try:
+        df_iphone = pd.read_csv("data/demo_advanced_iphone_300.csv")
+        st.session_state["df"] = df_iphone
         
         st.session_state.pop("samples_pos", None)
         st.session_state.pop("samples_neg", None)
         
-        if df.empty:
-            st.info("No posts found for the given configuration. Try a different keyword or relax the filters.")
+        st.success("Loaded advanced demo dataset (300 posts about 'iPhone' with transformer based sentiment and emotion).")
+    except FileNotFoundError:
+        st.error(
+            "Demo dataset file not found. Please generate it first"
+            " by running an advanced analysis for 'iPhone' with 300 posts and saving it to 'data/demo_advanced_iphone_300.csv'."
+        )
+
+if microsoft_btn:
+    try:
+        df_microsoft = pd.read_csv("data/demo_advanced_microsoft_300.csv")
+        st.session_state["df"] = df_microsoft
+        
+        st.session_state.pop("samples_pos", None)
+        st.session_state.pop("samples_neg", None)
+        
+        st.success("Loaded advanced demo dataset (300 posts about 'Microsoft' with transformer based sentiment and emotion).")
+    except FileNotFoundError:
+        st.error(
+            "Demo dataset file not found. Please generate it first"
+            " by running an advanced analysis for 'Microsoft' with 300 posts and saving it to 'data/demo_advanced_microsoft_300.csv'."
+        )
+
+if fetch_btn:
+    
+    if not ALLOW_FULL_FEATURES:
+        st.warning(
+            "Full feature access is disabled. Load the demo dataset to fully explore the dashboard. \n"
+            "To enable it, download the full version from GitHub (if not yet), set the "
+            "`ALLOW_FULL_FEATURES` environment variable to `true` and restart the app. "
+        )
+        st.stop()
+        
+    else:
+        
+        ai = run_scraper(
+            query="AI",
+            limit=300,
+            min_score=0,
+            translate_non_en=True,
+            use_advanced_nlp=True,
+        )
+        ai.to_csv("data/demo_advanced_ai_300.csv", index=False)
+        iphone = run_scraper(
+            query="iPhone",
+            limit=300,
+            min_score=0,
+            translate_non_en=True,
+            use_advanced_nlp=True,
+        )
+        iphone.to_csv("data/demo_advanced_iphone_300.csv", index=False)
+        microsoft = run_scraper(
+            query="Microsoft",
+            limit=300,
+            min_score=0,
+            translate_non_en=True,
+            use_advanced_nlp=True,
+        )
+        microsoft.to_csv("data/demo_advanced_microsoft_300.csv", index=False)
+        
+        if not query.strip():
+            st.warning("Please, enter a valid keyword or hashtag to search for.")
         else:
-            st.success(f"Analysis complete! Fetched and analyzed {len(df)} posts for '{query.strip()}'.")
+            try:
+                msg = "Fetching posts from Mastodon and running basic analysis..."
+                if use_advanced_nlp:
+                    msg = ("Fetching posts and running advanced transformer-based NLP \n This can be slow on CPU and take several minutes, consider using the demo dataset if you still have not.")
+                    
+                with st.spinner(msg):
+                    df = run_scraper(
+                        query=query.strip(),
+                        limit=limit,
+                        min_score=min_score,
+                        translate_non_en=translate_non_en,
+                        use_advanced_nlp=use_advanced_nlp,
+                        )
+            except Exception as e:
+                st.error(
+                    "Unable to fetch data from Mastodon at the moment. "
+                    "This can happen due to network issues, API rates limits, or changes in the Mastodon API."   
+                )
+                st.caption(f"Technical error details: `{type(e).__name__}: {e}`")
+                st.stop()
+                
+            st.session_state["df"] = df
+            
+            st.session_state.pop("samples_pos", None)
+            st.session_state.pop("samples_neg", None)
+            
+            if df.empty:
+                st.info("No posts found for the given configuration. Try a different keyword or relax the filters.")
+            else:
+                st.success(f"Analysis complete! Fetched and analyzed {len(df)} posts for '{query.strip()}'.")
             
 df_raw = st.session_state["df"]
 
